@@ -66,6 +66,12 @@ def build_app(ruletype, title, subtitle, cases, api_prefix, intro_def=None,
         BASE_DIR = os.path.dirname(sys.executable)
     else:
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    # على Render (أو أي استضافة تستخدم قرصًا دائمًا منفصلاً)، يكون
+    # quran.db ومجلدات الصوت موجودة على /data بدل مجلد الكود نفسه —
+    # نُحوّل BASE_DIR إليه تلقائيًا عند توفره، فتستفيد كل عمليات البحث
+    # عن قاعدة البيانات ومجلدات القرّاء أدناه دون أي تعديل آخر.
+    if os.path.isdir('/data') and os.path.exists('/data/quran.db'):
+        BASE_DIR = '/data'
     DB_PATH = _find_db_path(BASE_DIR)
 
     # نحلّ نص الآية الكامل ورقم الصفحة لكل حالة مرة واحدة عند الإقلاع،

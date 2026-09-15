@@ -16,6 +16,12 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# على Render (أو أي استضافة تستخدم قرصًا دائمًا منفصلاً)، يكون
+# quran.db ومجلدات الصوت موجودة على /data بدل مجلد الكود نفسه —
+# نُحوّل BASE_DIR إليه تلقائيًا عند توفره، فتستفيد كل عمليات البحث
+# عن قاعدة البيانات ومجلدات القرّاء أدناه دون أي تعديل آخر.
+if os.path.isdir('/data') and os.path.exists('/data/quran.db'):
+    BASE_DIR = '/data'
 
 def _find_db_path():
     candidates = [
