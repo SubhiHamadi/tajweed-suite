@@ -30,8 +30,8 @@ else:
 # quran.db ومجلدات الصوت موجودة على /data بدل مجلد الكود نفسه —
 # نُحوّل BASE_DIR إليه تلقائيًا عند توفره، فتستفيد كل عمليات البحث
 # عن قاعدة البيانات ومجلدات القرّاء أدناه دون أي تعديل آخر.
-if os.path.isdir('/data') and os.path.exists('/data/quran.db'):
-    BASE_DIR = '/data'
+if os.path.isdir('/var/data') and os.path.exists('/var/data/quran.db'):
+    BASE_DIR = '/var/data'
 
 def _find_db_path():
     candidates = [
