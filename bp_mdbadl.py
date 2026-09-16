@@ -371,7 +371,7 @@ tr:last-child td { border-bottom:none; }
     <table>
       <thead>
         <tr>
-          <th>ت</th><th>الكلمة</th><th>نوع المد</th><th>طول المد</th><th>الموضع</th>
+          <th>ت</th><th>الكلمة</th><th>نوع المد</th><th>الموضع</th>
         </tr>
       </thead>
       <tbody id="allCasesTable"></tbody>
@@ -458,7 +458,6 @@ tr:last-child td { border-bottom:none; }
         <th>ت</th>
         <th>الكلمة</th>
         <th>نوع المد</th>
-        <th>طول المد</th>
         <th>الموضع</th>
       </tr>
     </thead>
@@ -610,7 +609,6 @@ function showAllCases() {
     <td style="color:var(--muted)">${i+1}</td>
     <td class="word-cell" style="color:${c.color}">${c.word}</td>
     <td><span class="badge" style="color:${c.color};background:${c.color}18;border-color:${c.color}66">${c.itype}</span></td>
-    <td style="color:var(--muted)">${c.length || '6'} حركات</td>
     <td style="color:var(--muted);font-size:11px">كلمة ${c.position}</td>
   </tr>`).join('');
   document.getElementById('allCasesOverlay').classList.add('show');
@@ -841,7 +839,6 @@ function renderAyah(d) {
     <td style="color:var(--muted)">${i+1}</td>
     <td class="word-cell" style="color:${c.color}">${c.word}</td>
     <td><span class="badge" style="color:${c.color};background:${c.color}18;border-color:${c.color}66">${c.itype}</span></td>
-    <td style="color:var(--muted)">${c.length || '6'} حركات</td>
     <td style="color:var(--muted);font-size:11px">كلمة ${c.position}</td>
   </tr>`).join('');
 
