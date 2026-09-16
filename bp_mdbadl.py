@@ -36,6 +36,36 @@ def get_color(madd_type):
         if k.strip() == (madd_type or '').strip(): return v
     return '#CE93D8'
 
+_HAMZAS = ('ء', 'أ', 'إ', 'ؤ', 'ئ')
+_DIACRITICS = set('\u064B\u064C\u064D\u064E\u064F\u0650\u0651\u0652\u0653\u0654\u0655\u0656\u0657\u0658\u0659\u065A\u065B\u065C\u065D\u065E\u065F'
+                   '\u0610\u0611\u0612\u0613\u0614\u0615\u0616\u0617\u0618\u0619\u061A'
+                   '\u06D6\u06D7\u06D8\u06D9\u06DA\u06DB\u06DC\u06DD\u06DE\u06DF\u06E0\u06E1\u06E2\u06E3\u06E4\u06E5\u06E6\u06E7\u06E8\u06E9\u06EA\u06EB\u06EC\u06ED')
+
+def badal_letter_type(word):
+    """نظير بايثون لدالة badalLetterType في JavaScript — يستنتج نوع
+    حرف البدل (ألف/واو/ياء) من نص الكلمة نفسها، بما أن عمود rem1 في
+    البيانات الفعلية لا يحمل هذا التفريق (قيمة ثابتة واحدة للجدول
+    كله). يُستخدَم هنا لتفعيل التصفية بالنوع من جانب الخادم بشكل
+    صحيح فعلياً، بدل الاعتماد على rem1 المُعطَّل."""
+    if not word:
+        return None
+    chars = list(word)
+    for i, ch in enumerate(chars):
+        if ch == 'آ':
+            return 'مد البدل - ألف'
+        if ch in _HAMZAS:
+            for nxt in chars[i + 1:]:
+                if nxt == 'ا' or nxt == '\u0670':
+                    return 'مد البدل - ألف'
+                if nxt == 'و':
+                    return 'مد البدل - واو'
+                if nxt in ('ي', 'ى'):
+                    return 'مد البدل - ياء'
+                if nxt in _DIACRITICS:
+                    continue
+                break
+    return None
+
 READER_NAMES = {
     'Aya1Aya' : 'مشاري راشد العفاسي',
     'Aya9Aya' : 'محمد صديق المنشاوي — المعلم',
@@ -1077,14 +1107,19 @@ def api_nextayah():
     step    = 1 if delta > 0 else -1
     found   = None
     try:
+        cur.execute('''SELECT suraid, verseid, klmahr FROM md_badl
+                       ORDER BY CAST(suraid AS INTEGER), CAST(verseid AS INTEGER)''')
+        rows = cur.fetchall()
         if itype and itype != 'الكل':
-            cur.execute('''SELECT DISTINCT suraid, verseid FROM md_badl
-                           WHERE rem1=?
-                           ORDER BY CAST(suraid AS INTEGER), CAST(verseid AS INTEGER)''', (itype,))
+            seen = set(); all_ayat = []
+            for s, v, w in rows:
+                if badal_letter_type(w) == itype and (s, v) not in seen:
+                    seen.add((s, v)); all_ayat.append((s, v))
         else:
-            cur.execute('''SELECT DISTINCT suraid, verseid FROM md_badl
-                           ORDER BY CAST(suraid AS INTEGER), CAST(verseid AS INTEGER)''')
-        all_ayat = cur.fetchall()
+            seen = set(); all_ayat = []
+            for s, v, w in rows:
+                if (s, v) not in seen:
+                    seen.add((s, v)); all_ayat.append((s, v))
         cur_idx = None
         for i, (s, v) in enumerate(all_ayat):
             if int(s) == suraid and int(v) == verseid:
@@ -1111,10 +1146,15 @@ def api_suras():
     conn = get_db(); cur = conn.cursor()
     try:
         if itype and itype != 'الكل':
-            cur.execute('SELECT DISTINCT suraid, suraname FROM md_badl WHERE rem1=? ORDER BY CAST(suraid AS INTEGER)', (itype,))
+            cur.execute('SELECT suraid, suraname, klmahr FROM md_badl ORDER BY CAST(suraid AS INTEGER)')
+            seen = {}
+            for s, n, w in cur.fetchall():
+                if badal_letter_type(w) == itype:
+                    seen.setdefault(s, n)
+            rows = [{'suraid': s, 'suraname': n} for s, n in seen.items()]
         else:
             cur.execute('SELECT DISTINCT suraid, suraname FROM md_badl ORDER BY CAST(suraid AS INTEGER)')
-        rows = [{'suraid':r[0],'suraname':r[1]} for r in cur.fetchall()]
+            rows = [{'suraid':r[0],'suraname':r[1]} for r in cur.fetchall()]
     except: rows = []
     conn.close(); return jsonify(rows)
 
@@ -1127,10 +1167,15 @@ def api_verses():
     conn = get_db(); cur = conn.cursor()
     try:
         if itype and itype != 'الكل':
-            cur.execute('SELECT DISTINCT verseid FROM md_badl WHERE suraid=? AND rem1=? ORDER BY CAST(verseid AS INTEGER)', (suraid, itype))
+            cur.execute('SELECT verseid, klmahr FROM md_badl WHERE suraid=? ORDER BY CAST(verseid AS INTEGER)', (suraid,))
+            seen = []
+            for v, w in cur.fetchall():
+                if badal_letter_type(w) == itype and v not in seen:
+                    seen.append(v)
+            rows = [(v,) for v in seen]
         else:
             cur.execute('SELECT DISTINCT verseid FROM md_badl WHERE suraid=? ORDER BY CAST(verseid AS INTEGER)', (suraid,))
-        rows = cur.fetchall()
+            rows = cur.fetchall()
     except: rows = []
     conn.close(); return jsonify([r[0] for r in rows])
 
@@ -1146,11 +1191,15 @@ def api_ayah():
     if rand == '1':
         try:
             if itype and itype != 'الكل':
-                cur.execute('SELECT DISTINCT suraid,verseid FROM md_badl WHERE rem1=? ORDER BY RANDOM() LIMIT 1', (itype,))
+                cur.execute('SELECT suraid, verseid, klmahr FROM md_badl')
+                matches = [(s, v) for s, v, w in cur.fetchall() if badal_letter_type(w) == itype]
+                if matches:
+                    import random as _random
+                    suraid, verseid = _random.choice(matches)
             else:
                 cur.execute('SELECT DISTINCT suraid,verseid FROM md_badl ORDER BY RANDOM() LIMIT 1')
-            r = cur.fetchone()
-            if r: suraid, verseid = r[0], r[1]
+                r = cur.fetchone()
+                if r: suraid, verseid = r[0], r[1]
         except: pass
 
     if not suraid or not verseid:
@@ -1158,17 +1207,15 @@ def api_ayah():
 
     # جلب الأحكام (جدول md_badl مستقل بذاته: يضم أيضاً نص الآية واسم السورة)
     try:
+        cur.execute('''SELECT klmahr, rem1, NULL, kseq
+                       FROM md_badl
+                       WHERE suraid=? AND verseid=?
+                       ORDER BY kseq''', (suraid, verseid))
+        all_rows = cur.fetchall()
         if itype and itype != 'الكل':
-            cur.execute('''SELECT klmahr, rem1, NULL, kseq
-                           FROM md_badl
-                           WHERE suraid=? AND verseid=? AND rem1=?
-                           ORDER BY kseq''', (suraid, verseid, itype))
+            cases_raw = [c for c in all_rows if badal_letter_type(c[0]) == itype]
         else:
-            cur.execute('''SELECT klmahr, rem1, NULL, kseq
-                           FROM md_badl
-                           WHERE suraid=? AND verseid=?
-                           ORDER BY kseq''', (suraid, verseid))
-        cases_raw = cur.fetchall()
+            cases_raw = all_rows
     except: cases_raw = []
 
     # جلب نص الآية (من نفس جدول md_badl، لا حاجة لربط مع mushafnew)
