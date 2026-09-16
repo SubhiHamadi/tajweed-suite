@@ -624,6 +624,40 @@ const COLORS = {
   'مد البدل - ياء': '#EDE7F6',
 };
 
+// يستنتج نوع حرف البدل (ألف/واو/ياء) من نص الكلمة نفسه — حرف البدل
+// هو حرف مدّ (ا/و/ي) يأتي مباشرة بعد همزة (ء أ إ ؤ ئ)، متجاوزاً أي
+// تشكيل قصير بينهما. لازم لأن عمود rem1 في البيانات الفعلية لا يحمل
+// هذا التفريق (قيمة واحدة ثابتة لكل الجدول)، فلا مصدر آخر موثوق له.
+function badalLetterType(word) {
+  if (!word) return null;
+  const HAMZAS = ['ء', 'أ', 'إ', 'ؤ', 'ئ'];
+  const DIACRITICS = /[\u064B-\u065F\u0610-\u061A\u06D6-\u06ED]/;
+  const chars = Array.from(word);
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (ch === 'آ') return 'مد البدل - ألف'; // همزة وألف مندمجتان برسم واحد
+    if (HAMZAS.includes(ch)) {
+      for (let j = i + 1; j < chars.length; j++) {
+        const nxt = chars[j];
+        if (nxt === 'ا' || nxt === '\u0670') return 'مد البدل - ألف'; // ألف أو ألف خنجرية
+        if (nxt === 'و') return 'مد البدل - واو';
+        if (nxt === 'ي' || nxt === 'ى') return 'مد البدل - ياء';
+        if (DIACRITICS.test(nxt)) continue; // تجاوز التشكيل القصير ومتابعة البحث
+        break; // حرف صريح آخر لا يمثّل مدّاً — ليس بدلاً هنا
+      }
+    }
+  }
+  return null;
+}
+function badalLabel(word) {
+  const t = badalLetterType(word);
+  return t ? t.replace('مد البدل - ', 'بدل - ') : 'مد البدل';
+}
+function badalColor(word) {
+  const t = badalLetterType(word);
+  return t ? COLORS[t] : '#B0BEC5';
+}
+
 // ── التنقل بين الآيات ──
 async function changeAyah(delta) {
   if (!currentData) return;
@@ -790,6 +824,15 @@ async function syncSelects(d) {
 
 // ── Render ──
 function renderAyah(d) {
+  // نُصحِّح نوع/لون كل حالة اعتماداً على الكلمة نفسها (بدل الاعتماد على
+  // rem1 من قاعدة البيانات، التي تحمل نصاً ثابتاً واحداً لا يفرّق فعلياً
+  // بين ألف/واو/ياء) — مرة واحدة هنا، فيستفيد منها كل الكود التالي
+  // (التمييز اللوني، التصفية، العدّادات، الجدول) دون أي تعديل آخر.
+  d.cases.forEach(c => {
+    c.itype = badalLetterType(c.word) || c.itype;
+    c.color = COLORS[c.itype] || c.color;
+  });
+
   document.getElementById('infoSura').textContent =
     `سورة ${d.suraname} — الآية ${d.verseid} — صفحة ${d.pagenum}`;
 
