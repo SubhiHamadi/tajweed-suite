@@ -23,7 +23,7 @@ DB_PATH = os.path.join(BASE_DIR, 'quran.db')
 ITYPE_COLORS = {
     'مد البدل - ألف' : '#CE93D8',
     'مد البدل - واو' : '#B39DDB',
-    'مد البدل - ياء' : '#EDE7F6',
+    'مد البدل - ياء' : '#FFB74D',
 }
 
 def get_db():
@@ -129,7 +129,7 @@ HTML = '''<!DOCTYPE html>
   --muted: #B0BEC5;
   --lkm:   #CE93D8;
   --lkf:   #B39DDB;
-  --lhm:   #EDE7F6;
+  --lhm:   #FFB74D;
   --lhf:   #B39DDB;
 }
 * { box-sizing:border-box; margin:0; padding:0; }
@@ -651,7 +651,7 @@ function closeAllCases(e) {
 const COLORS = {
   'مد البدل - ألف': '#CE93D8',
   'مد البدل - واو': '#B39DDB',
-  'مد البدل - ياء': '#EDE7F6',
+  'مد البدل - ياء': '#FFB74D',
 };
 
 // يستنتج نوع حرف البدل (ألف/واو/ياء) من نص الكلمة نفسه — حرف البدل
@@ -872,7 +872,7 @@ function renderAyah(d) {
   const styleMap = {
     'مد البدل - ألف': 'background:#F3E5F5;color:#CE93D8;border:1px solid #CE93D8',
     'مد البدل - واو': 'background:#EDE7F6;color:#B39DDB;border:1px solid #B39DDB',
-    'مد البدل - ياء': 'background:#FAFAFA;color:#9E9E9E;border:1px solid #EDE7F6',
+    'مد البدل - ياء': 'background:#FFF3E0;color:#FFB74D;border:1px solid #FFB74D',
   };
   document.getElementById('infoCounts').innerHTML = Object.entries(counts)
     .filter(([,n])=>n>0)
