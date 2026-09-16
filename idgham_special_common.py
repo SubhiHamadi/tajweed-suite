@@ -29,6 +29,7 @@ def _clean_aya(text):
 def _find_db_path(base_dir):
     candidates = [
         os.path.join(base_dir, 'quran.db'),
+        '/var/data/quran.db',
         r'D:\family\quran.db',
         r'E:\family\quran.db',
     ]
@@ -98,11 +99,13 @@ def build_app(ruletype, title, subtitle, cases, api_prefix, intro_def=None,
 
     def _get_readers_dict():
         d = {}
-        if os.path.isdir(BASE_DIR):
-            for f in os.listdir(BASE_DIR):
-                if f in SKIP:
+        for root in (BASE_DIR, '/var/data'):
+            if not os.path.isdir(root):
+                continue
+            for f in os.listdir(root):
+                if f in SKIP or f in d:
                     continue
-                fp = os.path.join(BASE_DIR, f)
+                fp = os.path.join(root, f)
                 if os.path.isdir(fp):
                     d[f] = fp
         return d
@@ -758,25 +761,22 @@ async function askAI() {
         @app.route('/api/readers')
         def api_readers():
             readers = []
-            if os.path.isdir(BASE_DIR):
-                for f in sorted(os.listdir(BASE_DIR)):
-                    if f in SKIP:
-                        continue
-                    fp = os.path.join(BASE_DIR, f)
-                    if not os.path.isdir(fp):
-                        continue
+            for f, fp in sorted(_get_readers_dict().items()):
+                try:
                     files = os.listdir(fp)
-                    aya_mp3s = [x for x in files if x.endswith('.mp3') and len(x) == 10]
-                    if aya_mp3s:
-                        readers.append({'id': f, 'label': READER_NAMES.get(f, f)})
+                except Exception:
+                    continue
+                aya_mp3s = [x for x in files if x.endswith('.mp3') and len(x) == 10]
+                if aya_mp3s:
+                    readers.append({'id': f, 'label': READER_NAMES.get(f, f)})
             if not readers:
                 readers.append({'id': 'Aya1Aya', 'label': 'مشاري راشد العفاسي'})
             return jsonify(readers)
 
         @app.route('/audio/<reader>/<fname>')
         def serve_audio(reader, fname):
-            d = os.path.join(BASE_DIR, reader)
-            if os.path.isdir(d):
+            d = _get_readers_dict().get(reader)
+            if d and os.path.isdir(d):
                 return send_from_directory(d, fname)
             return '', 404
 
