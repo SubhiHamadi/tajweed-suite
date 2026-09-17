@@ -1233,7 +1233,7 @@ def api_save_result():
     cur.execute('''INSERT INTO quiz_results
         (student_name, student_gender, student_contact, quiz_type,
          total_q, correct, wrong, pct, saved_at)
-        VALUES (?,?,?,?,?,?,?,?,datetime('now','localtime'))''',
+        VALUES (?,?,?,?,?,?,?,?,datetime('now','+3 hours'))''',
         (data.get('name',''), data.get('gender',''), data.get('contact',''),
          data.get('quizType',''), data.get('total',0), data.get('correct',0),
          data.get('wrong',0), data.get('pct',0)))
