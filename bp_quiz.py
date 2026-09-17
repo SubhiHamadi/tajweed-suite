@@ -5,8 +5,8 @@ tajweed_quiz_unified.py — التدريب والاختبار الشامل لك�
 العارض للسكون — كأحكام تدريب إضافية عبر قائمة منسدلة جديدة.
 يعمل على بورت 5002
 """
-import os, sqlite3, json, random
-from flask import Flask, Blueprint, jsonify, request
+import os, sqlite3, json, random, csv, io
+from flask import Flask, Blueprint, jsonify, request, Response
 
 bp = Blueprint('quiz', __name__)
 import sys
@@ -16,6 +16,17 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DB_PATH = os.path.join(BASE_DIR, 'quran.db')
+
+# ── إصلاح: هذا الملف كان يبحث عن quran.db بجانب الكود دائماً، حتى لو
+# كانت القاعدة الحقيقية (ذات البيانات) موجودة على القرص الدائم في
+# /var/data — ما تسبب باتصال بملف فارغ جديد ينشئه SQLite تلقائياً.
+# نجرّب الآن عدة مسارات مرجّحة ونختار أول مسار يحتوي فعلاً على ملف. ──
+_DB_CANDIDATES = [
+    os.environ.get('QURAN_DB_PATH', ''),
+    '/var/data/quran.db',
+    os.path.join(BASE_DIR, 'quran.db'),
+]
+DB_PATH = next((p for p in _DB_CANDIDATES if p and os.path.isfile(p)), DB_PATH)
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -1215,6 +1226,49 @@ def api_save_result():
          data.get('wrong',0), data.get('pct',0)))
     conn.commit(); conn.close()
     return jsonify({'ok': True})
+
+
+# ══════════════════════════════════════════════════════════════
+#  تصدير نتائج الاختبار — رابط محمي بمفتاح سري، يُخرج CSV مرتب
+#  حسب النسبة (الأفضل أولاً) لفتحه مباشرة في Excel.
+#  الوصول: /admin/export_results?key=المفتاح_السري
+#  غيّر المفتاح السري من متغير بيئة ADMIN_EXPORT_KEY على Render
+#  (Settings → Environment)، أو عدّل القيمة الافتراضية أدناه مباشرة.
+# ══════════════════════════════════════════════════════════════
+ADMIN_EXPORT_KEY = os.environ.get('ADMIN_EXPORT_KEY', 'change-me-1970')
+
+@bp.route('/admin/export_results')
+def admin_export_results():
+    key = request.args.get('key', '')
+    if key != ADMIN_EXPORT_KEY:
+        return jsonify({'error': 'مفتاح غير صحيح'}), 403
+
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''CREATE TABLE IF NOT EXISTS quiz_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_name TEXT, student_gender TEXT, student_contact TEXT,
+        quiz_type TEXT, total_q INTEGER, correct INTEGER, wrong INTEGER,
+        pct INTEGER, saved_at TEXT)''')
+    cur.execute('''SELECT student_name, student_contact, student_gender,
+                          quiz_type, total_q, correct, wrong, pct, saved_at
+                   FROM quiz_results
+                   ORDER BY pct DESC, correct DESC, saved_at ASC''')
+    rows = cur.fetchall()
+    conn.close()
+
+    buf = io.StringIO()
+    buf.write('\ufeff')  # BOM حتى يفتح Excel النص العربي بترميز صحيح
+    writer = csv.writer(buf)
+    writer.writerow(['الاسم', 'جهة الاتصال', 'الجنس', 'نوع الاختبار',
+                      'عدد الأسئلة', 'صحيح', 'خطأ', 'النسبة %', 'وقت الحفظ'])
+    for r in rows:
+        writer.writerow(list(r))
+
+    return Response(
+        buf.getvalue(),
+        mimetype='text/csv; charset=utf-8',
+        headers={'Content-Disposition': 'attachment; filename=quiz_results.csv'}
+    )
 
 
 @bp.route('/api/suras')
