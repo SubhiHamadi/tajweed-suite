@@ -31,6 +31,8 @@ DB_PATH = next((p for p in _DB_CANDIDATES if p and os.path.isfile(p)), DB_PATH)
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA journal_mode=WAL')  # يحسّن التزامن عند كتابة
+                                              # عدة نتائج في نفس اللحظة تقريباً
     return conn
 
 # ── دعم القراء الأربعة (نطق دقيق للكلمة/العبارة عبر السحب + قائمة
@@ -1130,14 +1132,25 @@ function showResult() {
 
   const pct   = currentNum>0 ? Math.round(correct/currentNum*100) : 0;
 
-  fetch('/api/save_result', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({
-      name: studentName, gender: studentGender, contact: studentContact,
-      quizType: selectedQuizType, total: currentNum,
-      correct: correct, wrong: wrong, pct: pct
-    })
-  }).catch(()=>{});
+  // إعادة محاولة صامتة للحفظ (حتى مرتين إضافيتين) عند فشل الطلب الأول
+  // — احتياط عند تزامن عدد كبير من التسليمات في نفس اللحظة تقريباً.
+  function saveResultWithRetry(attemptsLeft) {
+    fetch('/api/save_result', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        name: studentName, gender: studentGender, contact: studentContact,
+        quizType: selectedQuizType, total: currentNum,
+        correct: correct, wrong: wrong, pct: pct
+      })
+    }).then(r => {
+      if (!r.ok && attemptsLeft > 0) {
+        setTimeout(() => saveResultWithRetry(attemptsLeft - 1), 1200);
+      }
+    }).catch(() => {
+      if (attemptsLeft > 0) setTimeout(() => saveResultWithRetry(attemptsLeft - 1), 1200);
+    });
+  }
+  saveResultWithRetry(2);
 
   const now   = new Date();
   const dateStr = now.toLocaleDateString('ar-IQ', {year:'numeric',month:'long',day:'numeric'});
@@ -1258,6 +1271,9 @@ def admin_export_results():
 
     buf = io.StringIO()
     buf.write('\ufeff')  # BOM حتى يفتح Excel النص العربي بترميز صحيح
+    buf.write('sep=,\r\n')  # يجبر Excel على استخدام الفاصلة كفاصل أعمدة
+                             # بغض النظر عن إعدادات المنطقة (حل مشكلة
+                             # تداخل الأعمدة عند النقر المزدوج على الملف)
     writer = csv.writer(buf)
     writer.writerow(['الاسم', 'جهة الاتصال', 'الجنس', 'نوع الاختبار',
                       'عدد الأسئلة', 'صحيح', 'خطأ', 'النسبة %', 'وقت الحفظ'])
