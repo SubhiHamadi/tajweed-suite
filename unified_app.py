@@ -94,12 +94,28 @@ def api_debug_readers():
     """مسار تشخيصي مؤقت — يكشف بالضبط أي مجلد يُفحص وماذا يحتوي،
     ويُظهر كل قواعد /api/readers المسجَّلة فعليًا في التطبيق (لكشف
     أي تعريف آخر يتجاوز هذا الملف)."""
+    folder_samples = {}
+    if os.path.isdir(AUDIO_BASE_DIR):
+        for f in sorted(os.listdir(AUDIO_BASE_DIR)):
+            fp = os.path.join(AUDIO_BASE_DIR, f)
+            if os.path.isdir(fp):
+                try:
+                    all_files = os.listdir(fp)
+                except Exception:
+                    all_files = []
+                mp3s = [x for x in all_files if x.endswith('.mp3')]
+                folder_samples[f] = {
+                    'total_files': len(all_files),
+                    'mp3_count': len(mp3s),
+                    'sample_filenames': sorted(all_files)[:8],
+                }
     info = {
         'AUDIO_BASE_DIR': AUDIO_BASE_DIR,
         'BASE_DIR': BASE_DIR,
         'var_data_isdir': os.path.isdir('/var/data'),
         'var_data_listing': os.listdir('/var/data') if os.path.isdir('/var/data') else None,
         'audio_base_listing': os.listdir(AUDIO_BASE_DIR) if os.path.isdir(AUDIO_BASE_DIR) else None,
+        'folder_samples': folder_samples,
         'readers_routes': [
             {'rule': str(r), 'endpoint': r.endpoint}
             for r in app.url_map.iter_rules() if 'readers' in str(r)
