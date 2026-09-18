@@ -95,6 +95,7 @@ def api_debug_readers():
     ويُظهر كل قواعد /api/readers المسجَّلة فعليًا في التطبيق (لكشف
     أي تعريف آخر يتجاوز هذا الملف)."""
     folder_samples = {}
+    computed_readers = []
     if os.path.isdir(AUDIO_BASE_DIR):
         for f in sorted(os.listdir(AUDIO_BASE_DIR)):
             fp = os.path.join(AUDIO_BASE_DIR, f)
@@ -108,7 +109,16 @@ def api_debug_readers():
                     'total_files': len(all_files),
                     'mp3_count': len(mp3s),
                     'sample_filenames': sorted(all_files)[:8],
+                    'in_skip': f in SKIP,
                 }
+                aya_mp3s  = [x for x in all_files if x.endswith('.mp3') and len(x) == 10]
+                sura_mp3s = [x for x in all_files if x.endswith('.mp3') and 6 <= len(x) <= 8 and x.replace('.mp3', '').strip().isdigit()]
+                if f in SKIP:
+                    continue
+                if aya_mp3s:
+                    computed_readers.append({'id': f, 'label': READER_NAMES.get(f, f), 'mode': 'aya', 'aya_mp3_count': len(aya_mp3s)})
+                elif sura_mp3s:
+                    computed_readers.append({'id': f, 'label': READER_NAMES.get(f, f), 'mode': 'sura'})
     info = {
         'AUDIO_BASE_DIR': AUDIO_BASE_DIR,
         'BASE_DIR': BASE_DIR,
@@ -116,6 +126,13 @@ def api_debug_readers():
         'var_data_listing': os.listdir('/var/data') if os.path.isdir('/var/data') else None,
         'audio_base_listing': os.listdir(AUDIO_BASE_DIR) if os.path.isdir(AUDIO_BASE_DIR) else None,
         'folder_samples': folder_samples,
+        'computed_readers': computed_readers,
+        'SKIP': list(SKIP),
+        'this_file': os.path.abspath(__file__),
+        'this_file_mtime': os.path.getmtime(os.path.abspath(__file__)),
+        'pycache_dir': os.path.join(os.path.dirname(os.path.abspath(__file__)), '__pycache__'),
+        'pycache_listing': (os.listdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '__pycache__'))
+                             if os.path.isdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), '__pycache__')) else None),
         'readers_routes': [
             {'rule': str(r), 'endpoint': r.endpoint}
             for r in app.url_map.iter_rules() if 'readers' in str(r)
