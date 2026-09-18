@@ -212,13 +212,12 @@ def _random_page(type_filter=None, sabab_filter=None):
         """, params)
         pages = [row[0] for row in cur.fetchall() if row[0] is not None]
         if not pages:
-            print('[_random_page] DEBUG: query returned no rows. SQL params:', params, flush=True)
-            return -99
-        return random.choice(pages)
-    except Exception:
-        print('[_random_page] EXCEPTION:', flush=True)
-        traceback.print_exc()
-        return -97
+            return -99, None
+        return random.choice(pages), None
+    except Exception as e:
+        err = traceback.format_exc()
+        print('[_random_page] EXCEPTION:', err, flush=True)
+        return -97, str(e) + ' || ' + err.replace('\n', ' | ')
     finally:
         conn.close()
 
@@ -830,7 +829,11 @@ def api_nearest():
 def api_random():
     type_filter  = request.args.get('type', 'الكل')
     sabab_filter = request.args.get('sabab', 'الكل')
-    return jsonify({'page': _random_page(type_filter, sabab_filter)})
+    page, err = _random_page(type_filter, sabab_filter)
+    resp = {'page': page}
+    if err:
+        resp['error'] = err
+    return jsonify(resp)
 
 @bp.route('/api/mim/sabab')
 def api_sabab():
