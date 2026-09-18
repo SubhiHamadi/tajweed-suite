@@ -4,7 +4,7 @@ mim_web_app.py — أحكام الميم الساكنة في القرآن الك
 البصرية. تنقل بالصفحة (نفس نمط mim_page_app.py الأصلي).
 يعمل على بورت 5045.
 """
-import os, re, sys, sqlite3, json
+import os, re, sys, sqlite3, json, traceback
 from flask import Flask, Blueprint, jsonify, request, send_from_directory, send_file
 
 bp = Blueprint('mim', __name__)
@@ -210,9 +210,17 @@ def _random_page(type_filter=None, sabab_filter=None):
             ORDER BY RANDOM() LIMIT 1
         """, params)
         r = cur.fetchone()
-        return r[0] if r else 1
+        if not r:
+            print('[_random_page] DEBUG: query returned no rows. SQL params:', params, flush=True)
+            return -99
+        if r[0] is None:
+            print('[_random_page] DEBUG: matched row but PAGENUM is NULL. params:', params, flush=True)
+            return -98
+        return r[0]
     except Exception:
-        return 1
+        print('[_random_page] EXCEPTION:', flush=True)
+        traceback.print_exc()
+        return -97
     finally:
         conn.close()
 
