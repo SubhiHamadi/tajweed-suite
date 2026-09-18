@@ -12,12 +12,6 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# على Render (أو أي استضافة تستخدم قرصًا دائمًا منفصلاً)، يكون
-# quran.db ومجلدات الصوت موجودة على /data بدل مجلد الكود نفسه —
-# نُحوّل BASE_DIR إليه تلقائيًا عند توفره، فتستفيد كل عمليات البحث
-# عن قاعدة البيانات ومجلدات القرّاء أدناه دون أي تعديل آخر.
-if os.path.isdir('/var/data') and os.path.exists('/var/data/quran.db'):
-    BASE_DIR = '/var/data'
 
 def _find_db_path():
     candidates = [
@@ -417,7 +411,7 @@ tr.case-row { cursor:pointer; }
   </div>
   <table>
     <thead><tr>
-      <th>السورة</th><th>الآية</th><th>الكلمة الأولى</th><th>الكلمة الثانية</th><th>السبب</th><th>الحرف التالي</th><th>الحكم</th>
+      <th>السورة</th><th>الآية</th><th>الكلمة الأولى</th><th>الكلمة الثانية</th><th>الحرف التالي</th><th>الحكم</th>
     </tr></thead>
     <tbody id="casesTable"></tbody>
   </table>
@@ -428,7 +422,7 @@ tr.case-row { cursor:pointer; }
     <div class="table-header" style="margin:-20px -20px 12px;border-radius:16px 16px 0 0;">📋 كل حالات الميم الساكنة في هذه الصفحة</div>
     <table>
       <thead><tr>
-        <th>السورة</th><th>الآية</th><th>الكلمة الأولى</th><th>الكلمة الثانية</th><th>السبب</th><th>الحرف التالي</th><th>الحكم</th>
+        <th>السورة</th><th>الآية</th><th>الكلمة الأولى</th><th>الكلمة الثانية</th><th>الحرف التالي</th><th>الحكم</th>
       </tr></thead>
       <tbody id="allCasesTable"></tbody>
     </table>
@@ -662,7 +656,6 @@ function renderPage(data) {
         <td>${v.suraname}</td><td>${v.verseid}</td>
         <td class="word-cell" style="color:${c.color};">${c.klma1}</td>
         <td class="word-cell" style="color:${c.color};">${c.klma2 || '—'}</td>
-        <td style="font-size:11px;">${c.sabab_icon} ${c.sabab || ''}</td>
         <td style="font-weight:bold;color:var(--muted);">${c.next_char || '—'}</td>
         <td style="color:${c.color};">${c.icon} ${c.rule_type}</td>
       </tr>`);
