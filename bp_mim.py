@@ -217,7 +217,18 @@ def _random_page(type_filter=None, sabab_filter=None):
     except Exception as e:
         err = traceback.format_exc()
         print('[_random_page] EXCEPTION:', err, flush=True)
-        return -97, str(e) + ' || ' + err.replace('\n', ' | ')
+        # تشخيص إضافي: أي ملف قاعدة بيانات فُتح فعليًا، وما الجداول الموجودة فيه؟
+        try:
+            diag_conn = sqlite3.connect(DB_PATH)
+            diag_cur = diag_conn.cursor()
+            diag_cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [t[0] for t in diag_cur.fetchall()]
+            diag_conn.close()
+            size = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 'MISSING'
+            diag = f'DB_PATH={DB_PATH} | exists={os.path.exists(DB_PATH)} | size={size} | tables={tables}'
+        except Exception as e2:
+            diag = f'diag_failed: {e2}'
+        return -97, str(e) + ' || DIAG: ' + diag
     finally:
         conn.close()
 
