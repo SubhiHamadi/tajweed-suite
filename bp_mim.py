@@ -29,6 +29,23 @@ def _find_db_path():
 
 DB_PATH = _find_db_path()
 
+def _find_audio_base_dir():
+    """يبحث عن مجلد الصوتيات (مجلد فرعي لكل قارئ) — على Render يكون
+    على القرص الدائم /var/data وليس مجلد الكود القادم من GitHub، الذي
+    لا يحوي فعليًا أي صوتيات (فقط ملفات المشروع مثل .git، .venv...)."""
+    candidates = ['/var/data', BASE_DIR]
+    for c in candidates:
+        if os.path.isdir(c):
+            try:
+                subdirs = [d for d in os.listdir(c) if os.path.isdir(os.path.join(c, d))]
+            except Exception:
+                subdirs = []
+            if subdirs:
+                return c
+    return BASE_DIR
+
+AUDIO_BASE_DIR = _find_audio_base_dir()
+
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -104,11 +121,11 @@ except Exception:
 
 def _get_readers_dict():
     d = {}
-    if os.path.isdir(BASE_DIR):
-        for f in os.listdir(BASE_DIR):
+    if os.path.isdir(AUDIO_BASE_DIR):
+        for f in os.listdir(AUDIO_BASE_DIR):
             if f in SKIP:
                 continue
-            fp = os.path.join(BASE_DIR, f)
+            fp = os.path.join(AUDIO_BASE_DIR, f)
             if os.path.isdir(fp):
                 d[f] = fp
     return d
@@ -887,10 +904,10 @@ def api_clip():
             lo, hi = int(request.args.get('lo')), int(request.args.get('hi'))
         except (TypeError, ValueError):
             return jsonify({'error': 'مجال كلمات غير صالح.'}), 400
-        clip_path, info = prepare_range_clip(BASE_DIR, readers_dict, suraid, verseid, aya_text, lo, hi, reciter)
+        clip_path, info = prepare_range_clip(AUDIO_BASE_DIR, readers_dict, suraid, verseid, aya_text, lo, hi, reciter)
     else:
         word = request.args.get('word', '')
-        clip_path, info = prepare_word_clip(BASE_DIR, readers_dict, suraid, verseid, aya_text, word, reciter)
+        clip_path, info = prepare_word_clip(AUDIO_BASE_DIR, readers_dict, suraid, verseid, aya_text, word, reciter)
     if not clip_path:
         return jsonify({'error': info or 'تعذّر تجهيز المقطع.'}), 404
     return send_file(clip_path, mimetype='audio/mpeg')
