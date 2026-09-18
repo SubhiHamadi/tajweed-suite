@@ -4,7 +4,7 @@ mim_web_app.py — أحكام الميم الساكنة في القرآن الك
 البصرية. تنقل بالصفحة (نفس نمط mim_page_app.py الأصلي).
 يعمل على بورت 5045.
 """
-import os, re, sys, sqlite3, json, traceback
+import os, re, sys, sqlite3, json, traceback, random
 from flask import Flask, Blueprint, jsonify, request, send_from_directory, send_file
 
 bp = Blueprint('mim', __name__)
@@ -203,20 +203,18 @@ def _random_page(type_filter=None, sabab_filter=None):
         if sabab_filter and sabab_filter != 'الكل':
             where.append('r.sabab=?'); params.append(sabab_filter)
         base_where = ('AND ' + ' AND '.join(where)) if where else ''
+        # نجلب كل أرقام الصفحات المطابقة بلا فرز عشوائي في SQL (مكلف جدًا
+        # على JOIN كبير)، ثم نختار واحدة عشوائيًا داخل بايثون — أخف بكثير.
         cur.execute(f"""
             SELECT DISTINCT m.PAGENUM FROM mim_rules r
             JOIN mushafnew m ON m.SURAID=r.suraid AND m.VERSEID=r.verseid
             WHERE 1=1 {base_where}
-            ORDER BY RANDOM() LIMIT 1
         """, params)
-        r = cur.fetchone()
-        if not r:
+        pages = [row[0] for row in cur.fetchall() if row[0] is not None]
+        if not pages:
             print('[_random_page] DEBUG: query returned no rows. SQL params:', params, flush=True)
             return -99
-        if r[0] is None:
-            print('[_random_page] DEBUG: matched row but PAGENUM is NULL. params:', params, flush=True)
-            return -98
-        return r[0]
+        return random.choice(pages)
     except Exception:
         print('[_random_page] EXCEPTION:', flush=True)
         traceback.print_exc()
