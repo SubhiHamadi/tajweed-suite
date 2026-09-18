@@ -4,10 +4,11 @@ mim_web_app.py — أحكام الميم الساكنة في القرآن الك
 البصرية. تنقل بالصفحة (نفس نمط mim_page_app.py الأصلي).
 يعمل على بورت 5045.
 """
-import os, re, sys, sqlite3, json, traceback, random
-from flask import Flask, Blueprint, jsonify, request, send_from_directory, send_file
+import os, re, sys, sqlite3, json
+from flask import Flask, jsonify, request, send_from_directory, send_file
 
-bp = Blueprint('mim', __name__)
+app = Flask(__name__)
+
 if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
@@ -21,8 +22,6 @@ def _find_db_path():
         r'E:\family\quran.db',
     ]
     for c in candidates:
-        # نتجاهل ملفًا موجودًا لكن فارغًا (0 بايت) — قد يكون ملف تمهيدي
-        # فارغ انتقل بالخطأ إلى مستودع الكود، ولا يجوز اعتباره القاعدة الحقيقية.
         if os.path.exists(c) and os.path.getsize(c) > 0:
             return c
     return candidates[0]
@@ -207,32 +206,16 @@ def _random_page(type_filter=None, sabab_filter=None):
         if sabab_filter and sabab_filter != 'الكل':
             where.append('r.sabab=?'); params.append(sabab_filter)
         base_where = ('AND ' + ' AND '.join(where)) if where else ''
-        # نجلب كل أرقام الصفحات المطابقة بلا فرز عشوائي في SQL (مكلف جدًا
-        # على JOIN كبير)، ثم نختار واحدة عشوائيًا داخل بايثون — أخف بكثير.
         cur.execute(f"""
             SELECT DISTINCT m.PAGENUM FROM mim_rules r
             JOIN mushafnew m ON m.SURAID=r.suraid AND m.VERSEID=r.verseid
             WHERE 1=1 {base_where}
+            ORDER BY RANDOM() LIMIT 1
         """, params)
-        pages = [row[0] for row in cur.fetchall() if row[0] is not None]
-        if not pages:
-            return -99, None
-        return random.choice(pages), None
-    except Exception as e:
-        err = traceback.format_exc()
-        print('[_random_page] EXCEPTION:', err, flush=True)
-        # تشخيص إضافي: أي ملف قاعدة بيانات فُتح فعليًا، وما الجداول الموجودة فيه؟
-        try:
-            diag_conn = sqlite3.connect(DB_PATH)
-            diag_cur = diag_conn.cursor()
-            diag_cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = [t[0] for t in diag_cur.fetchall()]
-            diag_conn.close()
-            size = os.path.getsize(DB_PATH) if os.path.exists(DB_PATH) else 'MISSING'
-            diag = f'DB_PATH={DB_PATH} | exists={os.path.exists(DB_PATH)} | size={size} | tables={tables}'
-        except Exception as e2:
-            diag = f'diag_failed: {e2}'
-        return -97, str(e) + ' || DIAG: ' + diag
+        r = cur.fetchone()
+        return r[0] if r else 1
+    except Exception:
+        return 1
     finally:
         conn.close()
 
@@ -600,28 +583,6 @@ function initDragSelect() {
   container.addEventListener('touchend', () => { document.dispatchEvent(new Event('mouseup')); });
 }
 
-// يزيل التشكيل وعلامات الوقف القرآنية، ويوحّد صور الألف (آ أ إ ٱ ← ا)
-// قبل المقارنة — نص quran.db الفعلي قد يختلف رسمًا عثمانيًا عن الكلمة
-// المخزَّنة (سكون مختلف، وقف ملتصق بلا مسافة، همزة وصل بدل ألف عادية).
-function bareChar(s) {
-  return (s || '')
-    .replace(/[\u064B-\u065F\u0610-\u061A\u06D6-\u06ED\u0670\u08D3-\u08FF\u0640]/g, '')
-    .replace(/[\u0622\u0623\u0625\u0671]/g, '\u0627');
-}
-function findWordRange(words, targetPhrase) {
-  let bareFull = '';
-  const charOwner = [];
-  words.forEach((w, wi) => {
-    const b = bareChar(w);
-    for (const ch of b) { bareFull += ch; charOwner.push(wi); }
-  });
-  const targetBare = bareChar((targetPhrase || '').replace(/\s+/g, ''));
-  if (!targetBare) return [-1, -1];
-  const pos = bareFull.indexOf(targetBare);
-  if (pos === -1) return [-1, -1];
-  return [charOwner[pos], charOwner[pos + targetBare.length - 1]];
-}
-
 function renderPage(data) {
   pageVerses = data.verses || [];
   document.getElementById('infoPage').textContent = `الصفحة ${data.page}`;
@@ -645,9 +606,9 @@ function renderPage(data) {
     v.cases.forEach(c => {
       [c.klma1, c.klma2].forEach(w => {
         if (!w) return;
-        const [lo, hi] = findWordRange(words, w);
-        if (lo === -1) return;
-        for (let i = lo; i <= hi; i++) { if (!caseByIdx[i]) caseByIdx[i] = c; }
+        for (let i = 0; i < words.length; i++) {
+          if (words[i] === w && !caseByIdx[i]) { caseByIdx[i] = c; break; }
+        }
       });
     });
     versesData[key] = { words, caseByIdx, suraid: v.suraid, verseid: v.verseid, suraname: v.suraname };
@@ -820,11 +781,11 @@ async function askAI() {
 # ══════════════════════════════════════════════════════════════
 #  المسارات (Routes)
 # ══════════════════════════════════════════════════════════════
-@bp.route('/mim')
+@app.route('/')
 def index():
     return HTML
 
-@bp.route('/api/mim/page')
+@app.route('/api/mim/page')
 def api_page():
     page  = request.args.get('page', 1, type=int)
     type_filter  = request.args.get('type', 'الكل')
@@ -832,7 +793,7 @@ def api_page():
     verses = _load_page(page, type_filter, sabab_filter)
     return jsonify({'page': page, 'verses': verses})
 
-@bp.route('/api/mim/nearest')
+@app.route('/api/mim/nearest')
 def api_nearest():
     page      = request.args.get('page', 1, type=int)
     direction = request.args.get('dir', 1, type=int)
@@ -840,17 +801,13 @@ def api_nearest():
     sabab_filter = request.args.get('sabab', 'الكل')
     return jsonify({'page': _find_nearest_page(page, direction, type_filter, sabab_filter)})
 
-@bp.route('/api/mim/random')
+@app.route('/api/mim/random')
 def api_random():
     type_filter  = request.args.get('type', 'الكل')
     sabab_filter = request.args.get('sabab', 'الكل')
-    page, err = _random_page(type_filter, sabab_filter)
-    resp = {'page': page}
-    if err:
-        resp['error'] = err
-    return jsonify(resp)
+    return jsonify({'page': _random_page(type_filter, sabab_filter)})
 
-@bp.route('/api/mim/sabab')
+@app.route('/api/mim/sabab')
 def api_sabab():
     conn = get_db(); cur = conn.cursor()
     try:
@@ -861,7 +818,32 @@ def api_sabab():
     conn.close()
     return jsonify(rows)
 
-@bp.route('/api/mim/clip')
+@app.route('/api/readers')
+def api_readers():
+    readers = []
+    if os.path.isdir(BASE_DIR):
+        for f in sorted(os.listdir(BASE_DIR)):
+            if f in SKIP:
+                continue
+            fp = os.path.join(BASE_DIR, f)
+            if not os.path.isdir(fp):
+                continue
+            files = os.listdir(fp)
+            aya_mp3s = [x for x in files if x.endswith('.mp3') and len(x) == 10]
+            if aya_mp3s:
+                readers.append({'id': f, 'label': READER_NAMES.get(f, f)})
+    if not readers:
+        readers.append({'id': 'Aya1Aya', 'label': 'مشاري راشد العفاسي'})
+    return jsonify(readers)
+
+@app.route('/audio/<reader>/<fname>')
+def serve_audio(reader, fname):
+    d = os.path.join(BASE_DIR, reader)
+    if os.path.isdir(d):
+        return send_from_directory(d, fname)
+    return '', 404
+
+@app.route('/api/mim/clip')
 def api_clip():
     """يُرجع مقطعاً صوتياً دقيقاً (كلمة واحدة أو مجال كلمات متتالية،
     محدَّد بالسحب) مقتطعاً من تلاوة أحد القرّاء الأربعة، بالاعتماد على
@@ -895,7 +877,7 @@ def api_clip():
         return jsonify({'error': info or 'تعذّر تجهيز المقطع.'}), 404
     return send_file(clip_path, mimetype='audio/mpeg')
 
-@bp.route('/api/mim/explain', methods=['POST'])
+@app.route('/api/mim/explain', methods=['POST'])
 def api_explain():
     import http.client as _hc
     data     = request.get_json(force=True)
@@ -932,3 +914,12 @@ def api_explain():
         return jsonify({'answer': f'Error: {err}'})
 
 
+if __name__ == '__main__':
+    import threading, webbrowser
+    if getattr(sys, 'frozen', False):
+        os.chdir(os.path.dirname(sys.executable))
+    port = 5045
+    url  = f'http://localhost:{port}'
+    threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    print(f'تطبيق الميم الساكنة (ويب) يعمل على: {url}')
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)

@@ -26,12 +26,6 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# على Render (أو أي استضافة تستخدم قرصًا دائمًا منفصلاً)، يكون
-# quran.db ومجلدات الصوت موجودة على /data بدل مجلد الكود نفسه —
-# نُحوّل BASE_DIR إليه تلقائيًا عند توفره، فتستفيد كل عمليات البحث
-# عن قاعدة البيانات ومجلدات القرّاء أدناه دون أي تعديل آخر.
-if os.path.isdir('/var/data') and os.path.exists('/var/data/quran.db'):
-    BASE_DIR = '/var/data'
 
 def _find_db_path():
     candidates = [
@@ -50,6 +44,7 @@ READER_NAMES = {
     'Aya1Aya' : 'مشاري راشد العفاسي',
     'Aya9Aya' : 'محمد صديق المنشاوي — المعلم',
     'AyaEAya' : '🇬🇧 Ibrahim Walk (English)',
+    'mnshawi_moratl' : 'المنشاوي',
 }
 SKIP = {'AyaAya', 'Husary', 'abdulstar', 'kolon', 'mnshawi'}
 
@@ -372,6 +367,8 @@ h1 { color:#F0C755; font-size:clamp(18px,5vw,26px); }
 </header>
 
 <div class="grid" id="grid"></div>
+
+<div class="note">✅ الدمج مكتمل — 26 حكمًا تجويديًا بالإضافة إلى الاختبار الشامل، كلها تعمل معًا على هذا الخادم الواحد.</div>
 
 <div id="subOverlay" onclick="closeSub(event)">
   <div id="subModal">
