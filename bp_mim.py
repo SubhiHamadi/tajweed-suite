@@ -15,12 +15,15 @@ else:
 
 def _find_db_path():
     candidates = [
+        '/var/data/quran.db',
         os.path.join(BASE_DIR, 'quran.db'),
         r'D:\family\quran.db',
         r'E:\family\quran.db',
     ]
     for c in candidates:
-        if os.path.exists(c):
+        # نتجاهل ملفًا موجودًا لكن فارغًا (0 بايت) — قد يكون ملف تمهيدي
+        # فارغ انتقل بالخطأ إلى مستودع الكود، ولا يجوز اعتباره القاعدة الحقيقية.
+        if os.path.exists(c) and os.path.getsize(c) > 0:
             return c
     return candidates[0]
 
