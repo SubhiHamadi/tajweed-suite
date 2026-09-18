@@ -40,6 +40,23 @@ def _find_db_path():
 
 DB_PATH = _find_db_path()
 
+def _find_audio_base_dir():
+    """يبحث عن مجلد الصوتيات (مجلد لكل قارئ) — على Render يكون على
+    القرص الدائم /var/data وليس مجلد الكود القادم من GitHub، الذي
+    يُعاد بناؤه فارغًا من الصوتيات عند كل نشر جديد."""
+    candidates = ['/var/data', BASE_DIR]
+    for c in candidates:
+        if os.path.isdir(c):
+            try:
+                subdirs = [d for d in os.listdir(c) if os.path.isdir(os.path.join(c, d))]
+            except Exception:
+                subdirs = []
+            if subdirs:
+                return c
+    return BASE_DIR
+
+AUDIO_BASE_DIR = _find_audio_base_dir()
+
 READER_NAMES = {
     'Aya1Aya' : 'مشاري راشد العفاسي',
     'Aya9Aya' : 'محمد صديق المنشاوي — المعلم',
@@ -54,11 +71,11 @@ def api_readers():
     على حدة. نفس المنطق الأغنى (يميّز قرّاء التلاوة بالآية عن قرّاء
     التلاوة بالسورة) المعتمد أصلاً في qlqhnlamat_common.py."""
     readers = []
-    if os.path.isdir(BASE_DIR):
-        for f in sorted(os.listdir(BASE_DIR)):
+    if os.path.isdir(AUDIO_BASE_DIR):
+        for f in sorted(os.listdir(AUDIO_BASE_DIR)):
             if f in SKIP:
                 continue
-            fp = os.path.join(BASE_DIR, f)
+            fp = os.path.join(AUDIO_BASE_DIR, f)
             if not os.path.isdir(fp):
                 continue
             files = os.listdir(fp)
@@ -72,11 +89,29 @@ def api_readers():
         readers.append({'id': 'Aya1Aya', 'label': 'مشاري راشد العفاسي', 'mode': 'aya'})
     return jsonify(readers)
 
+@app.route('/api/debug_readers')
+def api_debug_readers():
+    """مسار تشخيصي مؤقت — يكشف بالضبط أي مجلد يُفحص وماذا يحتوي،
+    ويُظهر كل قواعد /api/readers المسجَّلة فعليًا في التطبيق (لكشف
+    أي تعريف آخر يتجاوز هذا الملف)."""
+    info = {
+        'AUDIO_BASE_DIR': AUDIO_BASE_DIR,
+        'BASE_DIR': BASE_DIR,
+        'var_data_isdir': os.path.isdir('/var/data'),
+        'var_data_listing': os.listdir('/var/data') if os.path.isdir('/var/data') else None,
+        'audio_base_listing': os.listdir(AUDIO_BASE_DIR) if os.path.isdir(AUDIO_BASE_DIR) else None,
+        'readers_routes': [
+            {'rule': str(r), 'endpoint': r.endpoint}
+            for r in app.url_map.iter_rules() if 'readers' in str(r)
+        ],
+    }
+    return jsonify(info)
+
 @app.route('/audio/<reader>/<fname>')
 def serve_audio(reader, fname):
     """مسار صوت مشترك واحد — كل الأحكام تستدعيه بنفس الشكل المطلق
     (/audio/...)، فلا حاجة لتعديل أي سطر JavaScript داخل أي تطبيق."""
-    d = os.path.join(BASE_DIR, reader)
+    d = os.path.join(AUDIO_BASE_DIR, reader)
     if os.path.isdir(d):
         return send_from_directory(d, fname)
     return '', 404
