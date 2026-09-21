@@ -51,6 +51,16 @@ def get_db():
     return conn
 
 # ══════════════════════════════════════════════════════════════
+#  تطبيع نوع الحكم (itype) — بعض صفوف idghamdirect تُخزِّن تشكيلاً
+# عالقاً داخل نص itype نفسه (مثل "طْْ" بدل "ط")، فلا تطابق أي مفتاح
+# في القواميس أدناه رغم أنها "نفس النوع" منطقياً. نُزيل أي تشكيل قبل
+# أي مقارنة، في كل موضع يُقارَن فيه itype بمفاتيح هذه القواميس.
+# ══════════════════════════════════════════════════════════════
+_ITYPE_DIACRITICS_RE = re.compile(r'[\u064B-\u065F\u0610-\u061A\u06D6-\u06ED\u0670]')
+def _norm_itype(s):
+    return _ITYPE_DIACRITICS_RE.sub('', (s or '')).strip()
+
+# ══════════════════════════════════════════════════════════════
 #  ألوان/أيقونات/تعريفات أنواع الإدغام — منقولة حرفياً من Idgham_app.py
 # ══════════════════════════════════════════════════════════════
 ITYPE_COLORS = {
@@ -65,8 +75,9 @@ ITYPE_COLORS = {
     'إدغام كامل بلا غنة أن لا'           : '#69F0AE',
 }
 def get_color(itype):
+    target = _norm_itype(itype)
     for k, v in ITYPE_COLORS.items():
-        if k.strip() == (itype or '').strip():
+        if _norm_itype(k) == target:
             return v
     return '#F0C755'
 
@@ -82,8 +93,9 @@ ITYPE_ICONS = {
     'إدغام كامل بلا غنة أن لا'           : '🟩',
 }
 def get_icon(itype):
+    target = _norm_itype(itype)
     for k, v in ITYPE_ICONS.items():
-        if k.strip() == (itype or '').strip():
+        if _norm_itype(k) == target:
             return v
     return '🔹'
 
@@ -131,12 +143,12 @@ except Exception:
     _all_db_types = []
 _pi = 0
 for _t in _all_db_types:
-    if _t.strip() not in [k.strip() for k in ITYPE_COLORS]:
+    if _norm_itype(_t) not in [_norm_itype(k) for k in ITYPE_COLORS]:
         _color, _icon = _FALLBACK_PALETTE[_pi % len(_FALLBACK_PALETTE)]
         ITYPE_COLORS[_t] = _color
         ITYPE_ICONS[_t]  = _icon
         _pi += 1
-    if _t.strip() not in [k.strip() for k in ITYPE_DEFINITIONS]:
+    if _norm_itype(_t) not in [_norm_itype(k) for k in ITYPE_DEFINITIONS]:
         ITYPE_DEFINITIONS[_t] = ('إدغام صغير عند تجانس مخرجَي حرفين متجاورين '
                                   '(يتفقان في المخرج ويختلفان في الصفة).')
 
@@ -172,7 +184,7 @@ def _base_letter_before(text, i):
 
 def _idgham_letter(klmat, itype):
     text = (klmat or '').strip()
-    itype_key = (itype or '').strip()
+    itype_key = _norm_itype(itype)
     candidates = _IDGHAM_TYPE_LETTERS.get(itype_key)
     if candidates:
         for i, ch in enumerate(text):
@@ -234,6 +246,17 @@ def _get_readers_dict():
                 d[f] = fp
     return d
 
+def _clean_klmat(klmat):
+    """بعض صفوف idghamdirect تُخزِّن الكلمة نفسها مكررة بمسافة (خلل
+    بيانات)، مثل 'فَرَّطتُمْ فَرَّطتُمْ' بدل 'فَرَّطتُمْ' — ما يمنع
+    مطابقتها لاحقاً مع نص الآية الفعلي (المفرد) فيفشل التلوين، ويظهر
+    التكرار في عمود الكلمات أيضاً. نزيل أي تكرار مماثل هنا مرة واحدة."""
+    text = (klmat or '').strip()
+    parts = text.split()
+    if len(parts) == 2 and _strip_diacritics_idgham(parts[0]) == _strip_diacritics_idgham(parts[1]):
+        return parts[0]
+    return text
+
 # ══════════════════════════════════════════════════════════════
 #  منطق الآية — منقول من LoadThread في Idgham_app.py دون أي تغيير
 #  في الاستعلامات
@@ -258,7 +281,7 @@ def _load_ayah(suraid, verseid, itype_filter=None):
     cases = []
     for klmat, kseq, itype in cases_raw:
         cases.append({
-            'klmat' : (klmat or '').strip(),
+            'klmat' : _clean_klmat(klmat),
             'kseq'  : kseq,
             'itype' : itype,
             'color' : get_color(itype),
@@ -836,7 +859,8 @@ def api_ayah():
         verseid = request.args.get('verseid', 1, type=int)
     d = _load_ayah(suraid, verseid, itype)
     for c in d['cases']:
-        c['definition'] = ITYPE_DEFINITIONS.get(c['itype'].strip(), '')
+        _def = next((v for k, v in ITYPE_DEFINITIONS.items() if _norm_itype(k) == _norm_itype(c['itype'])), '')
+        c['definition'] = _def
     return jsonify(d)
 
 @bp.route('/api/idgham/clip')
