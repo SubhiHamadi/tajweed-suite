@@ -396,7 +396,7 @@ tr.case-row { cursor:pointer; }
 .all-cases-modal { max-width:680px; }
 .all-cases-modal table { width:100%; }
 .btn-showall { background:rgba(212,168,67,0.15); color:var(--gold); border:1.5px solid var(--gold);
-               padding:4px 12px; font-size:11px; border-radius:20px; }
+               padding:8px 24px; font-size:13px; border-radius:20px; font-weight:bold; }
 #wordTitle { font-family:"KFGQPC_HAFS_Uthmanic_Script_H","Traditional Arabic";
              font-size:26px; color:#F0C755; text-align:center; margin-bottom:6px; font-weight:bold; }
 #wordContext { font-size:12px; color:var(--muted); text-align:center; margin-bottom:14px; }
@@ -468,9 +468,10 @@ tr.case-row { cursor:pointer; }
     <button class="btn-toggle btn-tr" id="btnTr" onclick="toggleLang('tr')">🇹🇷 التركية</button>
     <button class="btn-toggle btn-az" id="btnAz" onclick="toggleLang('az')">🇦🇿 الأذربيجانية</button>
   </div>
-  <div class="ctrl-row" style="justify-content:center;">
+  <div class="ctrl-row" style="justify-content:center;gap:10px;">
     <button class="btn-toggle" onclick="showHelp()"
       style="background:#EDE7F6;color:#512DA8;border:1.5px solid #9575CD;padding:8px 24px;">📚 تعريف الإخفاء الحقيقي</button>
+    <button class="btn-showall" onclick="showAllCases()">⛶ عرض الكل</button>
   </div>
 </div>
 
@@ -488,10 +489,7 @@ tr.case-row { cursor:pointer; }
 <div id="ayatContainer"></div>
 
 <div class="table-wrap">
-  <div class="table-header" style="display:flex;justify-content:space-between;align-items:center;">
-    <span>📋 كل حالات الإخفاء الحقيقي في هذه الصفحة</span>
-    <button class="btn-showall" onclick="showAllCases()">⛶ عرض الكل</button>
-  </div>
+  <div class="table-header">📋 كل حالات الإخفاء الحقيقي في هذه الصفحة</div>
   <table>
     <thead><tr>
       <th>السورة</th><th>الآية</th><th>الكلمة الأولى</th><th>الكلمة الثانية</th><th>الحكم</th><th>ملاحظة</th>
