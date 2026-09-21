@@ -4,7 +4,7 @@ ikhfa_web_app.py — الإخفاء الحقيقي في القرآن الكري�
 (الألوان، الرأسية، أشرطة التحكم) لضمان مظهر موحّد عبر السويطة.
 يعمل على بورت 5040 (خارج نطاق 5009–5038 المستخدم أصلاً؛ عدّله عند الحاجة).
 """
-import os, re, sys, sqlite3, json
+import os, re, sys, sqlite3, json, random
 from flask import Flask, Blueprint, jsonify, request, send_from_directory, send_file
 
 bp = Blueprint('ikhfa', __name__)
@@ -12,27 +12,40 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# على Render (أو أي استضافة تستخدم قرصًا دائمًا منفصلاً)، يكون
-# quran.db ومجلدات الصوت موجودة على /data بدل مجلد الكود نفسه —
-# نُحوّل BASE_DIR إليه تلقائيًا عند توفره، فتستفيد كل عمليات البحث
-# عن قاعدة البيانات ومجلدات القرّاء أدناه دون أي تعديل آخر.
-if os.path.isdir('/var/data') and os.path.exists('/var/data/quran.db'):
-    BASE_DIR = '/var/data'
 
 # البحث عن قاعدة البيانات: مجلد المشروع أولاً (وهو ما يعمل فعلياً بعد
 # النشر على استضافة سحابية)، ثم مسارات التطوير المحلية على ويندوز كاحتياط.
 def _find_db_path():
     candidates = [
+        '/var/data/quran.db',
         os.path.join(BASE_DIR, 'quran.db'),
         r'D:\family\quran.db',
         r'E:\family\quran.db',
     ]
     for c in candidates:
-        if os.path.exists(c):
+        # نتجاهل ملفًا موجودًا لكن فارغًا (0 بايت) — قد يكون ملف تمهيدي
+        # فارغ انتقل بالخطأ إلى مستودع الكود، ولا يجوز اعتباره القاعدة الحقيقية.
+        if os.path.exists(c) and os.path.getsize(c) > 0:
             return c
     return candidates[0]
 
 DB_PATH = _find_db_path()
+
+def _find_audio_base_dir():
+    """يبحث عن مجلد الصوتيات (مجلد فرعي لكل قارئ) — على Render يكون
+    على القرص الدائم /var/data وليس مجلد الكود القادم من GitHub."""
+    candidates = ['/var/data', BASE_DIR]
+    for c in candidates:
+        if os.path.isdir(c):
+            try:
+                subdirs = [d for d in os.listdir(c) if os.path.isdir(os.path.join(c, d))]
+            except Exception:
+                subdirs = []
+            if subdirs:
+                return c
+    return BASE_DIR
+
+AUDIO_BASE_DIR = _find_audio_base_dir()
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -109,14 +122,46 @@ except Exception:
 
 def _get_readers_dict():
     d = {}
-    if os.path.isdir(BASE_DIR):
-        for f in os.listdir(BASE_DIR):
+    if os.path.isdir(AUDIO_BASE_DIR):
+        for f in os.listdir(AUDIO_BASE_DIR):
             if f in SKIP:
                 continue
-            fp = os.path.join(BASE_DIR, f)
+            fp = os.path.join(AUDIO_BASE_DIR, f)
             if os.path.isdir(fp):
                 d[f] = fp
     return d
+
+# ══════════════════════════════════════════════════════════════
+#  الترجمات والتفسير — نفس الجداول والمنطق المستخدم في bp_lazm.py
+#  (المد اللازم)، إذ يتشاركان قاعدة البيانات نفسها quran.db
+# ══════════════════════════════════════════════════════════════
+def _get_translations(cur, suraid, verseid):
+    en = tf = ur = ku = tr = az = ''
+    try:
+        cur.execute('SELECT text_en FROM quran_en WHERE suraid=? AND verseid=? LIMIT 1', (suraid, verseid))
+        r = cur.fetchone(); en = r[0] if r else ''
+    except Exception: pass
+    try:
+        cur.execute('SELECT tafseer FROM tafseer_jalalayn WHERE suraid=? AND verseid=? LIMIT 1', (suraid, verseid))
+        r = cur.fetchone(); tf = r[0] if r else ''
+    except Exception: pass
+    try:
+        cur.execute('SELECT text_ur FROM quran_ur WHERE suraid=? AND verseid=? LIMIT 1', (suraid, verseid))
+        r = cur.fetchone(); ur = r[0] if r else ''
+    except Exception: pass
+    try:
+        cur.execute('SELECT text_ku FROM quran_ku WHERE suraid=? AND verseid=? LIMIT 1', (suraid, verseid))
+        r = cur.fetchone(); ku = r[0] if r else ''
+    except Exception: pass
+    try:
+        cur.execute('SELECT text_tr FROM quran_tr WHERE suraid=? AND verseid=? LIMIT 1', (suraid, verseid))
+        r = cur.fetchone(); tr = r[0] if r else ''
+    except Exception: pass
+    try:
+        cur.execute('SELECT text_az FROM quran_az WHERE suraid=? AND verseid=? LIMIT 1', (suraid, verseid))
+        r = cur.fetchone(); az = r[0] if r else ''
+    except Exception: pass
+    return {'en': en, 'tf': tf, 'ur': ur, 'ku': ku, 'tr': tr, 'az': az}
 
 # ══════════════════════════════════════════════════════════════
 #  منطق الصفحة — منقول من PageLoadThread / FindPageThread في
@@ -168,10 +213,12 @@ def _load_page(page_num):
             if cases:
                 for c in cases:
                     c['note'] = _note_text(c)
+                trans = _get_translations(cur, suraid, verseid)
                 result.append({
                     'suraid'  : suraid, 'verseid': verseid,
                     'suraname': suraname, 'aya_text': _clean_aya(aya_text or ''),
                     'cases'   : cases,
+                    **trans,
                 })
     except Exception:
         result = []
@@ -210,10 +257,9 @@ def _random_page():
             SELECT DISTINCT m.PAGENUM FROM newtaj n
             JOIN mushafnew m ON m.SURAID=n.suraid AND m.VERSEID=n.verseid
             WHERE n.itype LIKE '%إخفاء%'
-            ORDER BY RANDOM() LIMIT 1
         """)
-        r = cur.fetchone()
-        return r[0] if r else 1
+        pages = [row[0] for row in cur.fetchall() if row[0] is not None]
+        return random.choice(pages) if pages else 1
     except Exception:
         return 1
     finally:
@@ -275,6 +321,23 @@ button { border:none; border-radius:8px; padding:8px 14px; font-family:"Traditio
 .speed-btn { padding:5px 11px; border-radius:20px; font-size:12px; font-weight:bold;
              border:1.5px solid var(--navy); background:#0A2040; color:var(--navy); cursor:pointer; }
 .speed-btn.active { background:var(--navy); color:#020B18; }
+
+/* ── أزرار الترجمة والتفسير (بنفس نسق المد اللازم) ── */
+.btn-toggle { padding:5px 12px; border-radius:20px; font-size:12px; font-weight:bold;
+              border:1.5px solid var(--border); background:#0A2040; color:var(--muted); cursor:pointer; }
+.btn-toggle.active { color:#020B18; border-color:transparent; }
+.btn-en  { border-color:var(--navy); color:var(--navy); }
+.btn-en.active  { background:var(--navy); }
+.btn-tf  { border-color:var(--border); color:var(--gold); }
+.btn-tf.active  { background:var(--gold); }
+.btn-ur  { border-color:#CE93D8; color:#CE93D8; }
+.btn-ur.active  { background:#CE93D8; }
+.btn-ku  { border-color:var(--green); color:var(--green); }
+.btn-ku.active  { background:var(--green); }
+.btn-tr  { border-color:var(--red); color:var(--red); }
+.btn-tr.active  { background:var(--red); }
+.btn-az  { border-color:#26A69A; color:#26A69A; }
+.btn-az.active  { background:#26A69A; }
 
 .legend { display:flex; gap:8px; padding:8px 14px; flex-wrap:wrap;
           background:var(--bg); border-bottom:1px solid var(--border); align-items:center; }
@@ -397,6 +460,14 @@ tr.case-row { cursor:pointer; }
       <button class="speed-btn" onclick="setSpeed(2.0,this)">2.0x</button>
     </div>
   </div>
+  <div class="ctrl-row" style="justify-content:center;gap:10px;flex-wrap:wrap;">
+    <button class="btn-toggle btn-en" id="btnEn" onclick="toggleLang('en')">🇬🇧 الترجمة</button>
+    <button class="btn-toggle btn-tf" id="btnTf" onclick="toggleLang('tf')">📖 التفسير</button>
+    <button class="btn-toggle btn-ur" id="btnUr" onclick="toggleLang('ur')">🇵🇰 الأوردو</button>
+    <button class="btn-toggle btn-ku" id="btnKu" onclick="toggleLang('ku')">🏴 الكردية</button>
+    <button class="btn-toggle btn-tr" id="btnTr" onclick="toggleLang('tr')">🇹🇷 التركية</button>
+    <button class="btn-toggle btn-az" id="btnAz" onclick="toggleLang('az')">🇦🇿 الأذربيجانية</button>
+  </div>
   <div class="ctrl-row" style="justify-content:center;">
     <button class="btn-toggle" onclick="showHelp()"
       style="background:#EDE7F6;color:#512DA8;border:1.5px solid #9575CD;padding:8px 24px;">📚 تعريف الإخفاء الحقيقي</button>
@@ -484,6 +555,7 @@ let currentPage  = 1;
 let currentSpeed = 1.0;
 let pageVerses   = [];
 let casesRowsHtml = '';
+let activeLang = null;
 const audio = document.getElementById('audioPlayer');
 
 function showNotify(msg) {
@@ -654,9 +726,11 @@ function renderPage(data) {
           <span class="word-tok" style="color:var(--navy);font-size:12px;" onclick="playAyahAt(${v.suraid},${v.verseid})">🔊 استمع للآية</span>
         </div>
         <div class="ayah-box">${text}</div>
+        <div class="translation-box" id="trans-${v.suraid}-${v.verseid}"></div>
       </div>`;
   }).join('');
   initDragSelect();
+  refreshTranslations();
 
   // جدول كل الحالات
   const rows = [];
@@ -688,6 +762,36 @@ function bindCaseRowClicks(tbodyId) {
       const idxs = Object.keys(vd.caseByIdx).map(Number).filter(i => vd.caseByIdx[i] === c);
       if (idxs.length) { openSelectionExplain(key, Math.min(...idxs), Math.max(...idxs)); closeAllCases(); }
     });
+  });
+}
+
+// ── الترجمة والتفسير (بنفس منطق المد اللازم) — لكن هنا تُعرض
+// ترجمة كل آية تحت صندوقها هي مباشرة، لأن الصفحة تعرض عدة آيات معاً
+const LANG_LABELS = { en: '🇬🇧', tf: '📖', ur: '🇵🇰', ku: '🏴', tr: '🇹🇷', az: '🇦🇿' };
+const LANG_BTN_IDS = ['btnEn', 'btnTf', 'btnUr', 'btnKu', 'btnTr', 'btnAz'];
+
+function toggleLang(lang) {
+  if (activeLang === lang) {
+    activeLang = null;
+  } else {
+    activeLang = lang;
+  }
+  LANG_BTN_IDS.forEach(id => document.getElementById(id)?.classList.remove('active'));
+  if (activeLang) {
+    const btn = document.getElementById('btn' + activeLang.charAt(0).toUpperCase() + activeLang.slice(1));
+    btn?.classList.add('active');
+  }
+  refreshTranslations();
+}
+
+function refreshTranslations() {
+  pageVerses.forEach(v => {
+    const box = document.getElementById(`trans-${v.suraid}-${v.verseid}`);
+    if (!box) return;
+    if (!activeLang) { box.classList.remove('show'); box.textContent = ''; return; }
+    const val = v[activeLang];
+    box.textContent = `${LANG_LABELS[activeLang]} ${val || 'غير متاح'}`;
+    box.classList.add('show');
   });
 }
 
@@ -858,10 +962,10 @@ def api_clip():
             lo, hi = int(request.args.get('lo')), int(request.args.get('hi'))
         except (TypeError, ValueError):
             return jsonify({'error': 'مجال كلمات غير صالح.'}), 400
-        clip_path, info = prepare_range_clip(BASE_DIR, readers_dict, suraid, verseid, aya_text, lo, hi, reciter)
+        clip_path, info = prepare_range_clip(AUDIO_BASE_DIR, readers_dict, suraid, verseid, aya_text, lo, hi, reciter)
     else:
         word = request.args.get('word', '')
-        clip_path, info = prepare_word_clip(BASE_DIR, readers_dict, suraid, verseid, aya_text, word, reciter)
+        clip_path, info = prepare_word_clip(AUDIO_BASE_DIR, readers_dict, suraid, verseid, aya_text, word, reciter)
     if not clip_path:
         return jsonify({'error': info or 'تعذّر تجهيز المقطع.'}), 404
     return send_file(clip_path, mimetype='audio/mpeg')
