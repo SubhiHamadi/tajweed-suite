@@ -6,7 +6,7 @@ idgham_web_app.py — أحكام الإدغام في القرآن الكريم (
 يعمل على بورت 5041 (خارج نطاق 5009–5038 المستخدم أصلاً، وخارج 5040
 الذي يستخدمه ikhfa_web_app.py).
 """
-import os, re, sys, sqlite3, json
+import os, re, sys, sqlite3, json, random
 from flask import Flask, Blueprint, jsonify, request, send_from_directory, send_file
 
 bp = Blueprint('idgham', __name__)
@@ -14,25 +14,36 @@ if getattr(sys, 'frozen', False):
     BASE_DIR = os.path.dirname(sys.executable)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# على Render (أو أي استضافة تستخدم قرصًا دائمًا منفصلاً)، يكون
-# quran.db ومجلدات الصوت موجودة على /data بدل مجلد الكود نفسه —
-# نُحوّل BASE_DIR إليه تلقائيًا عند توفره، فتستفيد كل عمليات البحث
-# عن قاعدة البيانات ومجلدات القرّاء أدناه دون أي تعديل آخر.
-if os.path.isdir('/var/data') and os.path.exists('/var/data/quran.db'):
-    BASE_DIR = '/var/data'
 
 def _find_db_path():
     candidates = [
+        '/var/data/quran.db',
         os.path.join(BASE_DIR, 'quran.db'),
         r'D:\family\quran.db',
         r'E:\family\quran.db',
     ]
     for c in candidates:
-        if os.path.exists(c):
+        if os.path.exists(c) and os.path.getsize(c) > 0:
             return c
     return candidates[0]
 
 DB_PATH = _find_db_path()
+
+def _find_audio_base_dir():
+    """يبحث عن مجلد الصوتيات (مجلد فرعي لكل قارئ) — على Render يكون
+    على القرص الدائم /var/data وليس مجلد الكود القادم من GitHub."""
+    candidates = ['/var/data', BASE_DIR]
+    for c in candidates:
+        if os.path.isdir(c):
+            try:
+                subdirs = [d for d in os.listdir(c) if os.path.isdir(os.path.join(c, d))]
+            except Exception:
+                subdirs = []
+            if subdirs:
+                return c
+    return BASE_DIR
+
+AUDIO_BASE_DIR = _find_audio_base_dir()
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -141,6 +152,11 @@ _IDGHAM_TYPE_LETTERS = {
     'إدغام متقارب لام وراء'               : 'ر',
     'إدغام (شفوي) المثلان الصغير في كلمتين': 'م',
     'إدغام كامل بلا غنة أن لا'           : 'ل',
+    # النوع الصحيح المؤكَّد من د. صبحي: طاء تدغم في تاء (مثل فَرَّطتُمْ)،
+    # وليس "ط + ث" كما بدا من رسم بعض الخطوط — أُدرج الاسمان احتياطاً
+    # لضمان المطابقة أياً كان النص الفعلي المخزَّن في قاعدة البيانات.
+    'ادغام متجانسين ط + ت'                : 'ت',
+    'ادغام متجانسين ط + ث'                : 'ت',
 }
 _IDGHAM_DIACRITICS_RE = re.compile(r'[\u064B-\u0650\u0652-\u065F\u0610-\u061A\u06D6-\u06ED\u0670]')
 _SHADDA = '\u0651'
@@ -209,11 +225,11 @@ def _get_readers_dict():
     """يبني قاموس (اسم_المجلد → المسار الكامل) لكل قرّاء التلاوة الكاملة
     — يُمرَّر إلى word_audio_helper الذي يحتاجه لتحديد توقيت الكلمة."""
     d = {}
-    if os.path.isdir(BASE_DIR):
-        for f in os.listdir(BASE_DIR):
+    if os.path.isdir(AUDIO_BASE_DIR):
+        for f in os.listdir(AUDIO_BASE_DIR):
             if f in SKIP:
                 continue
-            fp = os.path.join(BASE_DIR, f)
+            fp = os.path.join(AUDIO_BASE_DIR, f)
             if os.path.isdir(fp):
                 d[f] = fp
     return d
@@ -259,13 +275,12 @@ def _random_ayah(itype_filter=None):
     conn = get_db(); cur = conn.cursor()
     has_filter = itype_filter and itype_filter != 'الكل'
     if has_filter:
-        cur.execute('''SELECT DISTINCT suraid,verseid FROM idghamdirect
-            WHERE itype=? ORDER BY RANDOM() LIMIT 1''', (itype_filter,))
+        cur.execute('SELECT DISTINCT suraid,verseid FROM idghamdirect WHERE itype=?', (itype_filter,))
     else:
-        cur.execute('SELECT DISTINCT suraid,verseid FROM idghamdirect ORDER BY RANDOM() LIMIT 1')
-    r = cur.fetchone()
+        cur.execute('SELECT DISTINCT suraid,verseid FROM idghamdirect')
+    rows = cur.fetchall()
     conn.close()
-    return (r[0], r[1]) if r else (1, 1)
+    return random.choice(rows) if rows else (1, 1)
 
 # ══════════════════════════════════════════════════════════════
 #  الواجهة (HTML/CSS/JS)
@@ -455,7 +470,7 @@ tr.case-row { cursor:pointer; }
     <button class="btn-showall" onclick="showAllCases()">⛶ عرض الكل</button>
   </div>
   <table>
-    <thead><tr><th>الكلمات</th><th>نوع الإدغام</th><th>حرف الإدغام</th></tr></thead>
+    <thead><tr><th>الكلمات</th><th>نوع الإدغام</th></tr></thead>
     <tbody id="casesTable"></tbody>
   </table>
 </div>
@@ -464,7 +479,7 @@ tr.case-row { cursor:pointer; }
   <div class="all-cases-modal">
     <div class="table-header" style="margin:-20px -20px 12px;border-radius:16px 16px 0 0;">📋 حالات الإدغام في هذه الآية</div>
     <table>
-      <thead><tr><th>الكلمات</th><th>نوع الإدغام</th><th>حرف الإدغام</th></tr></thead>
+      <thead><tr><th>الكلمات</th><th>نوع الإدغام</th></tr></thead>
       <tbody id="allCasesTable"></tbody>
     </table>
     <button id="wordClose" onclick="closeAllCases()" style="margin-top:12px;">✕ إغلاق</button>
@@ -659,7 +674,6 @@ function renderAyah(d) {
     <tr class="case-row" data-caseidx="${idx}">
       <td class="word-cell" style="color:${c.color};">${c.klmat}</td>
       <td>${c.icon} ${c.itype.trim()}</td>
-      <td class="word-cell" style="color:${c.color};">${c.letter || '—'}</td>
     </tr>`).join('');
   document.getElementById('casesTable').innerHTML = casesRowsHtml;
   bindCaseRowClicks('casesTable', d);
@@ -719,7 +733,7 @@ function openSelectionExplain(lo, hi) {
   document.getElementById('wordTitle').style.color = color;
   document.getElementById('wordContext').textContent =
     `سورة ${currentAyah.suraname} — الآية ${currentAyah.verseid}` +
-    (rulings.length ? ' — ' + rulings.map(r => r.itype.trim() + (r.letter ? ` (حرف الإدغام: ${r.letter})` : '')).join('، ') : '');
+    (rulings.length ? ' — ' + rulings.map(r => r.itype.trim()).join('، ') : '');
   document.getElementById('wordResult').textContent =
     rulings.length ? rulings.map(r => r.definition).filter(Boolean).join(' / ')
                    : 'كلمات عادية بلا حكم إدغام موثّق هنا — يمكنك تشغيل نطقها أو سؤال الذكاء الاصطناعي.';
@@ -851,10 +865,10 @@ def api_clip():
             lo, hi = int(request.args.get('lo')), int(request.args.get('hi'))
         except (TypeError, ValueError):
             return jsonify({'error': 'مجال كلمات غير صالح.'}), 400
-        clip_path, info = prepare_range_clip(BASE_DIR, readers_dict, suraid, verseid, aya_text, lo, hi, reciter)
+        clip_path, info = prepare_range_clip(AUDIO_BASE_DIR, readers_dict, suraid, verseid, aya_text, lo, hi, reciter)
     else:
         word = request.args.get('word', '')
-        clip_path, info = prepare_word_clip(BASE_DIR, readers_dict, suraid, verseid, aya_text, word, reciter)
+        clip_path, info = prepare_word_clip(AUDIO_BASE_DIR, readers_dict, suraid, verseid, aya_text, word, reciter)
     if not clip_path:
         return jsonify({'error': info or 'تعذّر تجهيز المقطع.'}), 404
     return send_file(clip_path, mimetype='audio/mpeg')
